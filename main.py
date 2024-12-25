@@ -1,14 +1,65 @@
+import json
+import logging
 import os
 import re
 import socket
+import traceback
 from datetime import datetime
 
 import httpx
 
-from logger import get_logger
+
+class DatetimeEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, datetime):
+            return obj.strftime('%Y-%m-%d %H:%M:%S.%f')
+        return super().default(obj)
+
+
+class CustomFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        source = ":".join([record.filename, str(record.lineno)])
+        if isinstance(record.msg, dict):
+            if "_source" in record.msg:  # override call stack
+                source = record.msg["_source"]
+                message = {k: v for k, v in record.msg.items() if k not in ["_source"]}
+            else:
+                message = record.msg
+        else:
+            message = record.getMessage()
+        log = {
+            'name': record.name,
+            'level': record.levelname,
+            'source': source,
+            'create_time': datetime.fromtimestamp(record.created),
+            'message': message
+        }
+        if record.exc_info:
+            log["traceback"] = self.formatException(record.exc_info)
+        str_log = json.dumps(log, ensure_ascii=False, separators=(',', ':'), cls=DatetimeEncoder)
+        if (length := len(str_log)) > 65535:
+            log = {
+                "error": "logging entity too long",
+                "length": length,
+                "traceback": ''.join(traceback.format_list(traceback.extract_stack()))
+            }
+            str_log = json.dumps(log)
+        if "traceback" in log:  # 方便本地 DEBUG
+            str_log += "\n" + log["traceback"]
+        return str_log
+
+
+parent_logger = logging.getLogger("app")
+
+formatter = CustomFormatter()
+handler = logging.StreamHandler()
+handler.setFormatter(formatter)
+
+parent_logger.addHandler(handler)
+parent_logger.setLevel(logging.INFO)
 
 IP_PATTERN = re.compile(r'\d+\.\d+\.\d+\.\d+')
-logger = get_logger(str(int(datetime.now().timestamp())))
+logger = parent_logger.getChild(str(int(datetime.now().timestamp())))
 
 
 def assert_response(response: httpx.Response) -> httpx.Response:
@@ -120,6 +171,7 @@ def check_connectivity(ip: str) -> bool:
         logger.exception({"message": "check_connectivity", "ip": ip, "error": f"{e.__class__.__name__}: {str(e)}"})
         return False
 
+
 def check_connectivity_with_retry(ip: str, retry_times: int = 3) -> bool:
     for i in range(retry_times):
         if check_connectivity(ip):
@@ -128,7 +180,7 @@ def check_connectivity_with_retry(ip: str, retry_times: int = 3) -> bool:
     return False
 
 
-def task():
+def main():
     username: str = os.environ['IKUAI_USERNAME']
     md5_password: str = os.environ['IKUAI_MD5PASSWORD']
     ikuai_api = os.environ['IKUAI_API']
@@ -163,12 +215,40 @@ def task():
         logger.info({"message": "skip"})
 
 
-def main():
-    try:
-        task()
-    except Exception as e:
-        logger.exception({"message": "main", "error": f"{e.__class__.__name__}: {str(e)}"})
-
-
 if __name__ == '__main__':
     main()
+else:
+    from datetime import timedelta, timezone
+    from airflow import DAG
+    from airflow.operators.python import PythonOperator
+    from airflow.models import Variable
+
+    for key in [
+        "IKUAI_USERNAME", "IKUAI_MD5PASSWORD", "IKUAI_API", "IKUAI_WAN_ID",
+        "CF_EMAIL", "CF_GLOBAL_API_KEY", "CF_DOMAIN"
+    ]:
+        os.environ[key] = Variable.get(key)
+
+    default_args = {
+        "owner": "airflow",
+        "depends_on_past": False,
+        "email_on_failure": False,
+        "email_on_retry": False,
+        "retries": 1,
+        "retry_delay": timedelta(minutes=1)
+    }
+
+    with DAG(
+            "network_watch_dog",
+            default_args=default_args,
+            description="Network watch dog",
+            schedule_interval=timedelta(minutes=5),
+            start_date=datetime(2024, 12, 25, tzinfo=timezone(timedelta(hours=8))),
+            catchup=False,
+            tags=["network", "ddns"]
+    ) as dag:
+        task = PythonOperator(
+            task_id="network_watch_dog",
+            python_callable=main,
+            dag=dag
+        )
