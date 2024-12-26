@@ -44,8 +44,6 @@ class CustomFormatter(logging.Formatter):
                 "traceback": ''.join(traceback.format_list(traceback.extract_stack()))
             }
             str_log = json.dumps(log)
-        if "traceback" in log:  # 方便本地 DEBUG
-            str_log += "\n" + log["traceback"]
         return str_log
 
 
@@ -68,8 +66,8 @@ def assert_response(response: httpx.Response) -> httpx.Response:
 
 
 class IKuai:
-    def __init__(self, username: str, md5_password: str, url: str):
-        self.client = httpx.Client(base_url=url)
+    def __init__(self, username: str, md5_password: str, base_url: str):
+        self.client = httpx.Client(base_url=base_url)
 
         json_response = assert_response(
             self.client.post('/Action/login', json={'username': username, 'passwd': md5_password})
@@ -183,14 +181,14 @@ def check_connectivity_with_retry(ip: str, retry_times: int = 3) -> bool:
 def main():
     username: str = os.environ['IKUAI_USERNAME']
     md5_password: str = os.environ['IKUAI_MD5PASSWORD']
-    ikuai_api = os.environ['IKUAI_API']
+    ikuai_base_url = os.environ['IKUAI_BASE_URL']
     wan_id = int(os.getenv("IKUAI_WAN_ID", "1"))
 
     email: str = os.environ['CF_EMAIL']
     global_api_key: str = os.environ['CF_GLOBAL_API_KEY']
     domain: str = os.environ['CF_DOMAIN']
 
-    ikuai = IKuai(username, md5_password, ikuai_api)
+    ikuai = IKuai(username, md5_password, ikuai_base_url)
 
     wan_ip = get_wan_ip(ikuai, wan_id)
     wan_ip_connectivity = check_connectivity_with_retry(wan_ip, 3)
@@ -224,7 +222,7 @@ else:
     from airflow.models import Variable
 
     for key in [
-        "IKUAI_USERNAME", "IKUAI_MD5PASSWORD", "IKUAI_API", "IKUAI_WAN_ID",
+        "IKUAI_USERNAME", "IKUAI_MD5PASSWORD", "IKUAI_BASE_URL", "IKUAI_WAN_ID",
         "CF_EMAIL", "CF_GLOBAL_API_KEY", "CF_DOMAIN"
     ]:
         os.environ[key] = Variable.get(key)

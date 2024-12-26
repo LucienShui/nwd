@@ -1,0 +1,20 @@
+name: nwd
+
+services:
+  cron:
+    image: ghcr.io/lucienshui/nwd:main
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+      IKUAI_BASE_URL: ""
+      IKUAI_MD5PASSWORD: "***"
+      IKUAI_USERNAME: "username"
+      IKUAI_WAN_ID: 1
+      CF_EMAIL: "email@email.com"
+      CF_GLOBAL_API_KEY: "***"
+      CF_DOMAIN: "ddns.example.com"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
