@@ -47,17 +47,16 @@ class CustomFormatter(logging.Formatter):
         return str_log
 
 
-parent_logger = logging.getLogger("app")
+logger = logging.getLogger("app")
 
 formatter = CustomFormatter()
 handler = logging.StreamHandler()
 handler.setFormatter(formatter)
 
-parent_logger.addHandler(handler)
-parent_logger.setLevel(logging.INFO)
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
 
 IP_PATTERN = re.compile(r'\d+\.\d+\.\d+\.\d+')
-logger = parent_logger.getChild(str(int(datetime.now().timestamp())))
 
 
 def assert_response(response: httpx.Response) -> httpx.Response:
@@ -74,8 +73,8 @@ class IKuai:
         ).json()
         assert json_response['Result'] == 10000 and json_response['ErrMsg'] == 'Success', json_response['ErrMsg']
 
-    def post(self, json: dict) -> dict:
-        return assert_response(self.client.post('/Action/call', json=json)).json()
+    def post(self, body: dict) -> dict:
+        return assert_response(self.client.post('/Action/call', json=body)).json()
 
 
 class Cloudflare:
@@ -215,38 +214,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-else:
-    from datetime import timedelta, timezone
-    from airflow import DAG
-    from airflow.operators.python import PythonOperator
-    from airflow.models import Variable
-
-    for key in [
-        "IKUAI_USERNAME", "IKUAI_MD5PASSWORD", "IKUAI_BASE_URL", "IKUAI_WAN_ID",
-        "CF_EMAIL", "CF_GLOBAL_API_KEY", "CF_DOMAIN"
-    ]:
-        os.environ[key] = Variable.get(key)
-
-    default_args = {
-        "owner": "airflow",
-        "depends_on_past": False,
-        "email_on_failure": False,
-        "email_on_retry": False,
-        "retries": 1,
-        "retry_delay": timedelta(minutes=1)
-    }
-
-    with DAG(
-            "network_watch_dog",
-            default_args=default_args,
-            description="Network watch dog",
-            schedule_interval=timedelta(minutes=5),
-            start_date=datetime(2024, 12, 25, tzinfo=timezone(timedelta(hours=8))),
-            catchup=False,
-            tags=["network", "ddns"]
-    ) as dag:
-        task = PythonOperator(
-            task_id="network_watch_dog",
-            python_callable=main,
-            dag=dag
-        )
