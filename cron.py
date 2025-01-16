@@ -11,7 +11,7 @@ interval = int(os.getenv("CRON_INTERVAL", "1"))
 def main():
     while True:
         now = datetime.now()
-        if now.second == 0 and now.minute % interval:
+        if now.second == 0 and now.minute % interval == 0:
             try:
                 job()
             except Exception as e:
