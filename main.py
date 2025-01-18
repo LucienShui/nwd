@@ -162,7 +162,7 @@ def resolve(domain: str) -> str:
 
 def check_connectivity(ip: str) -> bool:
     try:
-        response  = Client().get(f"http://{ip}:2016")
+        response = Client().get(f"http://{ip}:2016")
         return response.status_code == 302
     except Exception as e:
         logger.exception({"message": "check_connectivity", "ip": ip, "error": f"{e.__class__.__name__}: {str(e)}"})

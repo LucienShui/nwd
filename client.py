@@ -1,21 +1,24 @@
-from http.client import HTTPConnection, HTTPSConnection, HTTPResponse
 import json as json_lib
+from http.client import HTTPConnection, HTTPSConnection, HTTPResponse
 from urllib.parse import urlparse, urlencode, ParseResult
 
 
 class Response:
     def __init__(self, response: HTTPResponse):
         self.response = response
+        self._text: str = ...
 
     def is_success(self):
         return 200 <= self.response.status < 300
 
     def json(self):
-        return json_lib.loads(self.response.read().decode())
+        return json_lib.loads(self.text)
 
     @property
     def text(self):
-        return self.response.read().decode()
+        if self._text is ...:
+            self._text = self.response.read().decode()
+        return self._text
 
     @property
     def status_code(self):
