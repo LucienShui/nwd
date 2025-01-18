@@ -6,7 +6,7 @@ import socket
 import traceback
 from datetime import datetime
 
-import httpx
+from client import Client, Response
 
 
 class DatetimeEncoder(json.JSONEncoder):
@@ -59,27 +59,27 @@ logger.setLevel(logging.INFO)
 IP_PATTERN = re.compile(r'\d+\.\d+\.\d+\.\d+')
 
 
-def assert_response(response: httpx.Response) -> httpx.Response:
-    assert response.is_success, response.text
-    return response
+def assert_response(response: Response) -> dict:
+    assert response.is_success(), response.text
+    return response.json()
 
 
 class IKuai:
     def __init__(self, username: str, md5_password: str, base_url: str):
-        self.client = httpx.Client(base_url=base_url)
+        self.client = Client(base_url=base_url)
 
         json_response = assert_response(
             self.client.post('/Action/login', json={'username': username, 'passwd': md5_password})
-        ).json()
+        )
         assert json_response['Result'] == 10000 and json_response['ErrMsg'] == 'Success', json_response['ErrMsg']
 
     def post(self, body: dict) -> dict:
-        return assert_response(self.client.post('/Action/call', json=body)).json()
+        return assert_response(self.client.post('/Action/call', json=body))
 
 
 class Cloudflare:
     def __init__(self, email: str, global_api_key: str):
-        self.client = httpx.Client(
+        self.client = Client(
             base_url="https://api.cloudflare.com/client/v4",
             headers={
                 "X-Auth-Email": email,
@@ -90,7 +90,7 @@ class Cloudflare:
 
     def get_zone_id(self, domain: str) -> str:
         # https://developers.cloudflare.com/api/resources/zones/methods/get/
-        response = assert_response(self.client.get("/zones")).json()
+        response = assert_response(self.client.get("/zones"))
         for zone in response["result"]:
             name: str = zone["name"]
             if name == domain or domain.endswith(f".{name}"):
@@ -99,7 +99,7 @@ class Cloudflare:
 
     def get_dns_record_detail(self, domain: str, zone_id: str) -> (str, str):
         # https://developers.cloudflare.com/api/resources/dns/subresources/records/methods/list/
-        response = assert_response(self.client.get(f"/zones/{zone_id}/dns_records", params={"name": domain})).json()
+        response = assert_response(self.client.get(f"/zones/{zone_id}/dns_records", params={"name": domain}))
         for record in response["result"]:
             if record["name"] == domain:
                 return record["id"], record["content"]
@@ -115,10 +115,10 @@ class Cloudflare:
         zone_id: str = self.get_zone_id(domain)
         dns_record_id, record_ip = self.get_dns_record_detail(domain, zone_id)
         if ip != record_ip:
-            response = assert_response(self.client.patch(f"/zones/{zone_id}/dns_records/{dns_record_id}", json={
+            response = assert_response(self.client.post(f"/zones/{zone_id}/dns_records/{dns_record_id}", json={
                 "content": ip,
                 "comment": comment or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            })).json()
+            }))
             logger.info({
                 "message": "patch_dns_record",
                 "record_ip": record_ip,
@@ -141,7 +141,8 @@ def wan_reconnect(ikuai: IKuai, wan_id: int) -> dict:
 
 
 def get_ip_from_api() -> str:
-    response = httpx.get("http://myip.ipip.net").raise_for_status().text
+    client = Client(base_url="")
+    response = client.get("http://myip.ipip.net").text
     ip = IP_PATTERN.findall(response)[0]
     return ip
 
@@ -161,9 +162,8 @@ def resolve(domain: str) -> str:
 
 def check_connectivity(ip: str) -> bool:
     try:
-        with httpx.Client() as client:
-            response = client.head(f"http://{ip}:2016")
-            return response.status_code == 302
+        response  = Client().get(f"http://{ip}:2016")
+        return response.status_code == 302
     except Exception as e:
         logger.exception({"message": "check_connectivity", "ip": ip, "error": f"{e.__class__.__name__}: {str(e)}"})
         return False
