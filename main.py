@@ -115,8 +115,12 @@ class Cloudflare:
         zone_id: str = self.get_zone_id(domain)
         dns_record_id, record_ip = self.get_dns_record_detail(domain, zone_id)
         if ip != record_ip:
-            response = assert_response(self.client.post(f"/zones/{zone_id}/dns_records/{dns_record_id}", json={
+            response = assert_response(self.client.put(f"/zones/{zone_id}/dns_records/{dns_record_id}", json={
+                "name": domain,
+                "type": "A",
                 "content": ip,
+                "proxied": False,
+                "ttl": 60,
                 "comment": comment or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             }))
             logger.info({

@@ -70,6 +70,12 @@ class Client:
         headers = ({"Content-Type": "application/json"} if json else None) | (headers or {})
         return self._request("POST", url, body=body, params=params, headers=headers)
 
+    def put(self, url: str, json: dict | None = None, params: dict | None = None,
+            headers: dict | None = None) -> Response:
+        body = json_lib.dumps(json, ensure_ascii=False, separators=(',', ':')) if json else None
+        headers = ({"Content-Type": "application/json"} if json else None) | (headers or {})
+        return self._request("PUT", url, body=body, params=params, headers=headers)
+
     def get(self, url: str, params: dict | None = None, headers: dict | None = None) -> Response:
         return self._request("GET", url, params=params, headers=headers)
 
