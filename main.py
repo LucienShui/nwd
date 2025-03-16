@@ -142,7 +142,7 @@ def wan_reconnect(ikuai: IKuai, wan_id: int) -> dict:
 
 def get_ip_from_api() -> str:
     client = Client(base_url="")
-    response = client.get("http://myip.ipip.net").text
+    response = client.get("https://myip.ipip.net").text
     ip = IP_PATTERN.findall(response)[0]
     return ip
 
@@ -160,20 +160,20 @@ def resolve(domain: str) -> str:
         return ""
 
 
-def check_connectivity(ip: str) -> bool:
+def check_connectivity(url: str) -> bool:
     try:
-        response = Client().get(f"http://{ip}:2016")
-        return response.status_code == 302
+        response = Client().get(url)
+        return response.status_code == 200
     except Exception as e:
         logger.exception({"message": "check_connectivity", "ip": ip, "error": f"{e.__class__.__name__}: {str(e)}"})
         return False
 
 
-def check_connectivity_with_retry(ip: str, retry_times: int = 3) -> bool:
+def check_connectivity_with_retry(url: str, retry_times: int = 3) -> bool:
     for i in range(retry_times):
-        if check_connectivity(ip):
+        if check_connectivity(url):
             return True
-        logger.info({"message": "check_connectivity_with_retry", "ip": ip, "retry_times": i + 1})
+        logger.info({"message": "check_connectivity_with_retry", "url": url, "retry_times": i + 1})
     return False
 
 
@@ -187,10 +187,17 @@ def main():
     global_api_key: str = os.environ['CF_GLOBAL_API_KEY']
     domain: str = os.environ['CF_DOMAIN']
 
+    wan_ip_connectivity_check_url: str = os.getenv("WAN_CHECK_URL", "")
+
     ikuai = IKuai(username, md5_password, ikuai_base_url)
 
     wan_ip = get_wan_ip(ikuai, wan_id)
-    wan_ip_connectivity = check_connectivity_with_retry(wan_ip, 3)
+    if wan_ip_connectivity_check_url:
+        wan_ip_connectivity = check_connectivity_with_retry(wan_ip_connectivity_check_url.format_map({
+            "wan_ip": wan_ip
+        }), 3)
+    else:
+        wan_ip_connectivity = True
     api_ip = get_ip_from_api()
     dns_record_ip = resolve(domain)
 
